@@ -2,31 +2,29 @@
 # Azure Active Directory Applications
 #
 
-module azuread_applications {
+module "azuread_applications" {
   source     = "./modules/azuread/applications"
   depends_on = [module.keyvault_access_policies]
   for_each   = var.azuread_apps
 
-  client_config           = local.client_config
-  settings                = each.value
   azuread_api_permissions = try(var.azuread_api_permissions[each.key], {})
+  client_config           = local.client_config
   global_settings         = local.global_settings
+  keyvaults               = local.combined_objects_keyvaults
+  settings                = each.value
   user_type               = var.user_type
-  keyvaults               = module.keyvaults
-  tfstates                = var.tfstates
-  use_msi                 = var.use_msi
 }
 
-output aad_apps {
-  value     = module.azuread_applications
-  sensitive = true
+output "aad_apps" {
+  value = module.azuread_applications
+
 }
 
 #
 # Azure Active Directory Groups
 #
 
-module azuread_groups {
+module "azuread_groups" {
   source   = "./modules/azuread/groups"
   for_each = var.azuread_groups
 
@@ -35,12 +33,12 @@ module azuread_groups {
   tenant_id       = local.client_config.tenant_id
 }
 
-output azuread_groups {
-  value     = module.azuread_groups
-  sensitive = true
+output "azuread_groups" {
+  value = module.azuread_groups
+
 }
 
-module azuread_groups_members {
+module "azuread_groups_members" {
   source   = "./modules/azuread/groups_members"
   for_each = var.azuread_groups
 
@@ -54,17 +52,18 @@ module azuread_groups_members {
 # Azure Active Directory Users
 #
 
-module azuread_users {
+module "azuread_users" {
   source     = "./modules/azuread/users"
   depends_on = [module.keyvault_access_policies]
   for_each   = var.azuread_users
 
+  client_config   = local.client_config
   global_settings = local.global_settings
-  azuread_users   = each.value
-  keyvaults       = module.keyvaults
+  keyvaults       = local.combined_objects_keyvaults
+  settings        = each.value
 }
 
-output azuread_users {
-  value     = module.azuread_users
-  sensitive = true
+output "azuread_users" {
+  value = module.azuread_users
+
 }

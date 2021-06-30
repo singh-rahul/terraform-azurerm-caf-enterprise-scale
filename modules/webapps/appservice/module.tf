@@ -2,10 +2,11 @@
 resource "azurecaf_name" "app_service" {
   name          = var.name
   resource_type = "azurerm_app_service"
-  prefixes      = [var.global_settings.prefix]
+  prefixes      = var.global_settings.prefixes
   random_length = var.global_settings.random_length
   clean_input   = true
   passthrough   = var.global_settings.passthrough
+  use_slug      = var.global_settings.use_slug
 }
 
 
@@ -24,11 +25,11 @@ resource "azurerm_app_service" "app_service" {
   https_only              = lookup(var.settings, "https_only", null)
 
   dynamic "identity" {
-    for_each = try(var.identity, null) != null ? [1] : [0]
+    for_each = try(var.identity, null) == null ? [] : [1]
 
     content {
-      type         = try(var.identity.type, null)
-      identity_ids = try(var.identity.identity_ids, null)
+      type         = var.identity.type
+      identity_ids = lower(var.identity.type) == "userassigned" ? local.managed_identities : null
     }
   }
 
@@ -78,7 +79,7 @@ resource "azurerm_app_service" "app_service" {
     }
   }
 
-  app_settings = var.app_settings
+  app_settings = local.app_settings
 
   dynamic "connection_string" {
     for_each = var.connection_strings
@@ -173,7 +174,7 @@ resource "azurerm_app_service" "app_service" {
     content {
       name                = var.settings.backup.name
       enabled             = var.settings.backup.enabled
-      storage_account_url = lookup(var.settings.backup, "storage_account_url ", null)
+      storage_account_url = try(var.settings.backup.storage_account_url, local.backup_sas_url)
 
       dynamic "schedule" {
         for_each = lookup(var.settings.backup, "schedule", {}) != {} ? [1] : []
@@ -271,4 +272,3 @@ resource "azurerm_template_deployment" "site_config" {
 
   deployment_mode = "Incremental"
 }
-

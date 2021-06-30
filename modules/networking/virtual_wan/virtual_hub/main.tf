@@ -1,16 +1,11 @@
-terraform {
-  backend "azurerm" {
-  }
-}
-
 data "azurerm_subscription" "current" {
 }
 
 locals {
-  blueprint_tag = {
-    "blueprint" = basename(abspath(path.module))
+  module_tag = {
+    "module" = basename(abspath(path.module))
   }
-  tags = merge(var.tags, local.blueprint_tag)
+  tags = merge(local.module_tag, var.tags, try(var.virtual_hub_config.tags, null))
 }
 
 terraform {

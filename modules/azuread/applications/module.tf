@@ -1,17 +1,6 @@
-
-# resource "azurecaf_name" "aad_apps" {
-#   name          = var.settings.name
-#   resource_type = "azurerm_resource_group"
-#   #TODO: need to be changed to appropriate resource (no caf reference for now)
-#   prefixes      = [var.global_settings.prefix]
-#   random_length = var.global_settings.random_length
-#   clean_input   = true
-#   passthrough   = var.global_settings.passthrough
-# }
-
 resource "azuread_application" "app" {
 
-  name = try(var.settings.useprefix, false) ? format("%s-%s", var.global_settings.prefix, var.settings.application_name) : format("%s", var.settings.application_name)
+  display_name = var.global_settings.passthrough ? format("%s", var.settings.application_name) : format("%v-%s", try(var.global_settings.prefixes[0], ""), var.settings.application_name)
 
   owners = [
     var.client_config.object_id
@@ -24,7 +13,6 @@ resource "azuread_application" "app" {
   public_client              = try(var.settings.public_client, false)
   oauth2_allow_implicit_flow = try(var.settings.oauth2_allow_implicit_flow, false)
   group_membership_claims    = try(var.settings.group_membership_claims, "All")
-  type                       = try(var.settings.type, null)
   prevent_duplicate_names    = try(var.settings.identifier_uris, false)
 
   dynamic "required_resource_access" {
@@ -54,21 +42,34 @@ resource "azuread_service_principal" "app" {
   tags                         = try(var.settings.tags, null)
 }
 
-resource "azuread_service_principal_password" "app" {
+resource "azuread_service_principal_password" "pwd" {
   service_principal_id = azuread_service_principal.app.id
-  value                = random_password.app.result
-  end_date_relative    = format("%sh", try(var.settings.password_expire_in_days, 180) * 24)
+  value                = random_password.pwd.result
+  end_date             = timeadd(time_rotating.pwd.id, format("%sh", local.password_policy.expire_in_days * 24))
 
   lifecycle {
-    ignore_changes = [
-      end_date_relative, value
-    ]
+    create_before_destroy = false
   }
 }
 
-resource "random_password" "app" {
-  length  = 250
-  special = false
-  upper   = true
-  number  = true
+locals {
+  password_policy = try(var.settings.password_policy, var.password_policy)
+}
+
+resource "time_rotating" "pwd" {
+  rotation_minutes = try(local.password_policy.rotation.mins, null)
+  rotation_days    = try(local.password_policy.rotation.days, null)
+  rotation_months  = try(local.password_policy.rotation.months, null)
+  rotation_years   = try(local.password_policy.rotation.years, null)
+}
+
+# Will force the password to change every month
+resource "random_password" "pwd" {
+  keepers = {
+    frequency = time_rotating.pwd.id
+  }
+  length  = local.password_policy.length
+  special = local.password_policy.special
+  upper   = local.password_policy.upper
+  number  = local.password_policy.number
 }

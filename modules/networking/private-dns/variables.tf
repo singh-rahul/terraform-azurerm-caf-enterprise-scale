@@ -1,28 +1,29 @@
-variable global_settings {}
-variable tags {
+variable "global_settings" {
+  description = "Global settings object (see module README.md)"
+}
+variable "client_config" {
+  description = "Client configuration object (see module README.md)."
+}
+variable "name" {
 }
 
-variable name {
+variable "resource_group_name" {
 }
 
-variable resource_group_name {
+variable "records" {
 }
 
-variable records {
-}
-
-variable vnet_links {
+variable "vnet_links" {
   default = {}
 }
 
-variable tfstates {
-  default = null
+variable "vnets" {
+  default = {}
 }
-
-variable use_msi {
-  default = false
+variable "base_tags" {
+  description = "Base tags for the resource to be inherited from the resource group."
+  type        = map(any)
 }
-
-variable vnets {
+variable "tags" {
   default = {}
 }

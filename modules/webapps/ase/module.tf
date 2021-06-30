@@ -1,15 +1,16 @@
 resource "azurecaf_name" "ase" {
   name          = var.name
-  resource_type = "azurerm_storage_account"
-  prefixes      = [var.global_settings.prefix]
+  resource_type = "azurerm_app_service_environment"
+  prefixes      = var.global_settings.prefixes
   random_length = var.global_settings.random_length
   clean_input   = true
   passthrough   = var.global_settings.passthrough
+  use_slug      = var.global_settings.use_slug
 }
 
 resource "azurerm_template_deployment" "ase" {
 
-  name                = var.name
+  name                = azurecaf_name.ase.result
   resource_group_name = var.resource_group_name
 
   template_body = file(local.arm_filename)
@@ -35,7 +36,7 @@ resource "null_resource" "destroy_ase" {
   provisioner "local-exec" {
     command     = format("%s/scripts/destroy_resource.sh", path.module)
     when        = destroy
-    interpreter = ["/bin/sh"]
+    interpreter = ["/bin/bash"]
     on_failure  = fail
 
     environment = {
@@ -45,18 +46,10 @@ resource "null_resource" "destroy_ase" {
 
 }
 
-
-
-# As of writing, the ASE ARM deployment don't return the IP address of the ILB
-# ASE. This workaround querys Azure's API to get the values we need for use
-# elsewhere in the script.
-# See this https://stackoverflow.com/a/49436100
-data "external" "ase_ilb_ip" {
-  # This calls the Azure CLI then passes the value to jq to return JSON as a single
-  # string so that external provider can parse it properly. Otherwise you get an
-  # error. See this bug https://github.com/terraform-providers/terraform-provider-external/issues/23
-  program = ["bash", "-c", "az resource show --ids ${lookup(azurerm_template_deployment.ase.outputs, "id")}/capacities/virtualip --query '{internalIpAddress: properties.internalIpAddress}' | jq -c"]
-
+data "azurerm_app_service_environment" "ase" {
   depends_on = [azurerm_template_deployment.ase]
+
+  name                = azurecaf_name.ase.result
+  resource_group_name = var.resource_group_name
 }
 

@@ -1,26 +1,29 @@
-variable keyvault_id {}
+variable "keyvaults" {
+  default = {}
+}
+variable "keyvault_key" {
+  default = null
+}
+variable "keyvault_id" {
+  default = null
+}
 
-variable access_policies {
+variable "access_policies" {
   validation {
     condition     = length(var.access_policies) <= 16
     error_message = "A maximun of 16 access policies can be set."
   }
 }
 
-variable tenant_id {}
-
-variable logged_user_objectId {
-  default = null
+variable "client_config" {
+  description = "Client configuration object (see module README.md)."
 }
-variable logged_aad_app_objectId {
-  default = null
-}
-variable azuread_groups {
+variable "azuread_groups" {
   default = {}
 }
-variable azuread_apps {
+variable "azuread_apps" {
   default = {}
 }
-variable managed_identities {
+variable "resources" {
   default = {}
 }

@@ -2,10 +2,11 @@
 resource "azurecaf_name" "appis" {
   name          = var.name
   resource_type = "azurerm_application_insights"
-  prefixes      = [var.global_settings.prefix]
+  prefixes      = var.global_settings.prefixes
   random_length = var.global_settings.random_length
   clean_input   = true
   passthrough   = var.global_settings.passthrough
+  use_slug      = var.global_settings.use_slug
 }
 
 resource "azurerm_application_insights" "appinsights" {
@@ -18,4 +19,5 @@ resource "azurerm_application_insights" "appinsights" {
   retention_in_days                     = var.retention_in_days
   sampling_percentage                   = var.sampling_percentage
   disable_ip_masking                    = var.disable_ip_masking
+  tags                                  = local.tags
 }

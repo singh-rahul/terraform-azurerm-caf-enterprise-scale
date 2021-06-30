@@ -4,10 +4,11 @@ resource "azurecaf_name" "windows" {
 
   name          = each.value.name
   resource_type = "azurerm_windows_virtual_machine"
-  prefixes      = [var.global_settings.prefix]
-  random_length = try(var.global_settings.random_length, null)
+  prefixes      = var.global_settings.prefixes
+  random_length = var.global_settings.random_length
   clean_input   = true
-  passthrough   = try(var.global_settings.passthrough, false)
+  passthrough   = var.global_settings.passthrough
+  use_slug      = var.global_settings.use_slug
 }
 
 # Name of the Windows computer name
@@ -16,10 +17,11 @@ resource "azurecaf_name" "windows_computer_name" {
 
   name          = try(each.value.computer_name, each.value.name)
   resource_type = "azurerm_windows_virtual_machine"
-  prefixes      = [var.global_settings.prefix]
-  random_length = try(var.global_settings.random_length, null)
+  prefixes      = var.global_settings.prefixes
+  random_length = var.global_settings.random_length
   clean_input   = true
-  passthrough   = try(var.global_settings.passthrough, false)
+  passthrough   = var.global_settings.passthrough
+  use_slug      = var.global_settings.use_slug
 }
 
 # Name for the OS disk
@@ -28,33 +30,38 @@ resource "azurecaf_name" "os_disk_windows" {
 
   name          = try(each.value.os_disk.name, null)
   resource_type = "azurerm_managed_disk"
-  prefixes      = [var.global_settings.prefix]
-  random_length = try(var.global_settings.random_length, null)
+  prefixes      = var.global_settings.prefixes
+  random_length = var.global_settings.random_length
   clean_input   = true
-  passthrough   = try(var.global_settings.passthrough, false)
+  passthrough   = var.global_settings.passthrough
+  use_slug      = var.global_settings.use_slug
 }
 
 resource "azurerm_windows_virtual_machine" "vm" {
-  for_each = local.os_type == "windows" ? var.settings.virtual_machine_settings : {}
+  depends_on = [azurerm_network_interface.nic, azurerm_network_interface_security_group_association.nic_nsg]
+  for_each   = local.os_type == "windows" ? var.settings.virtual_machine_settings : {}
 
-  name                       = azurecaf_name.windows[each.key].result
-  location                   = var.location
-  resource_group_name        = var.resource_group_name
-  size                       = each.value.size
-  admin_username             = each.value.admin_username
-  admin_password             = random_password.admin[local.os_type].result
-  network_interface_ids      = local.nic_ids
-  allow_extension_operations = try(each.value.allow_extension_operations, null)
-  computer_name              = azurecaf_name.windows_computer_name[each.key].result
-  provision_vm_agent         = try(each.value.provision_vm_agent, true)
-  zone                       = try(each.value.zone, null)
-  custom_data                = try(each.value.custom_data, null) == null ? null : filebase64(format("%s/%s", path.cwd, each.value.custom_data))
-  enable_automatic_updates   = try(each.value.enable_automatic_updates, null)
-  eviction_policy            = try(each.value.eviction_policy, null)
-  max_bid_price              = try(each.value.max_bid_price, null)
-  license_type               = try(each.value.license_type, null)
-  tags                       = try(each.value.tags, null)
-  timezone                   = try(each.value.timezone, null)
+  name                         = azurecaf_name.windows[each.key].result
+  location                     = var.location
+  resource_group_name          = var.resource_group_name
+  size                         = each.value.size
+  admin_username               = try(each.value.admin_username_key, null) == null ? each.value.admin_username : local.admin_username
+  admin_password               = try(each.value.admin_password_key, null) == null ? random_password.admin[local.os_type].result : local.admin_password
+  network_interface_ids        = local.nic_ids
+  allow_extension_operations   = try(each.value.allow_extension_operations, null)
+  computer_name                = azurecaf_name.windows_computer_name[each.key].result
+  provision_vm_agent           = try(each.value.provision_vm_agent, true)
+  zone                         = try(each.value.zone, null)
+  custom_data                  = try(each.value.custom_data, null) == null ? null : filebase64(format("%s/%s", path.cwd, each.value.custom_data))
+  enable_automatic_updates     = try(each.value.enable_automatic_updates, null)
+  eviction_policy              = try(each.value.eviction_policy, null)
+  max_bid_price                = try(each.value.max_bid_price, null)
+  priority                     = try(each.value.priority, null)
+  license_type                 = try(each.value.license_type, null)
+  tags                         = merge(local.tags, try(each.value.tags, null))
+  timezone                     = try(each.value.timezone, null)
+  availability_set_id          = try(var.availability_sets[var.client_config.landingzone_key][each.value.availability_set_key].id, var.availability_sets[each.value.availability_sets].id, null)
+  proximity_placement_group_id = try(var.proximity_placement_groups[var.client_config.landingzone_key][each.value.proximity_placement_group_key].id, var.proximity_placement_groups[each.value.proximity_placement_groups].id, null)
 
   os_disk {
     caching                   = each.value.os_disk.caching
@@ -62,6 +69,7 @@ resource "azurerm_windows_virtual_machine" "vm" {
     name                      = azurecaf_name.os_disk_windows[each.key].result
     storage_account_type      = each.value.os_disk.storage_account_type
     write_accelerator_enabled = try(each.value.os_disk.write_accelerator_enabled, false)
+    disk_encryption_set_id    = try(each.value.os_disk.disk_encryption_set_key, null) == null ? null : try(var.disk_encryption_sets[var.client_config.landingzone_key][each.value.os_disk.disk_encryption_set_key].id, var.disk_encryption_sets[each.value.os_disk.lz_key][each.value.os_disk.disk_encryption_set_key].id, null)
 
     dynamic "diff_disk_settings" {
       for_each = try(each.value.diff_disk_settings, false) == false ? [] : [1]
@@ -72,12 +80,18 @@ resource "azurerm_windows_virtual_machine" "vm" {
     }
   }
 
-  source_image_reference {
-    publisher = try(each.value.source_image_reference.publisher, null)
-    offer     = try(each.value.source_image_reference.offer, null)
-    sku       = try(each.value.source_image_reference.sku, null)
-    version   = try(each.value.source_image_reference.version, null)
+  dynamic "source_image_reference" {
+    for_each = try(each.value.source_image_reference, null) != null ? [1] : []
+
+    content {
+      publisher = try(each.value.source_image_reference.publisher, null)
+      offer     = try(each.value.source_image_reference.offer, null)
+      sku       = try(each.value.source_image_reference.sku, null)
+      version   = try(each.value.source_image_reference.version, null)
+    }
   }
+
+  source_image_id = try(each.value.custom_image_id, var.custom_image_ids[each.value.lz_key][each.value.custom_image_key].id, null)
 
   dynamic "additional_capabilities" {
     for_each = try(each.value.additional_capabilities, false) == false ? [] : [1]
@@ -97,10 +111,29 @@ resource "azurerm_windows_virtual_machine" "vm" {
   }
 
   dynamic "boot_diagnostics" {
-    for_each = var.boot_diagnostics_storage_account == {} ? [] : [1]
+    for_each = try(var.boot_diagnostics_storage_account != null ? [1] : var.global_settings.resource_defaults.virtual_machines.use_azmanaged_storage_for_boot_diagnostics == true ? [1] : [], [])
 
     content {
-      storage_account_uri = var.boot_diagnostics_storage_account
+      storage_account_uri = var.boot_diagnostics_storage_account == "" ? null : var.boot_diagnostics_storage_account
+    }
+  }
+
+  dynamic "secret" {
+    for_each = try(each.value.winrm.enable_self_signed, false) == false ? [] : [1]
+
+    content {
+
+      key_vault_id = local.keyvault.id
+
+      # WinRM certificate
+      dynamic "certificate" {
+        for_each = try(each.value.winrm.enable_self_signed, false) == false ? [] : [1]
+
+        content {
+          url   = azurerm_key_vault_certificate.self_signed_winrm[each.key].secret_id
+          store = "My"
+        }
+      }
     }
   }
 
@@ -124,18 +157,18 @@ resource "azurerm_windows_virtual_machine" "vm" {
   }
 
   dynamic "winrm_listener" {
-    for_each = try(each.value.winrm_listener, false) == false ? [] : [1]
+    for_each = try(each.value.winrm, false) == false ? [] : [1]
 
     content {
-      protocol        = each.value.winrm_listener.protocol
-      certificate_url = each.value.winrm_listener.certificate_url
+      protocol        = try(each.value.winrm.protocol, "Https")
+      certificate_url = try(each.value.winrm.enable_self_signed, false) ? azurerm_key_vault_certificate.self_signed_winrm[each.key].secret_id : each.value.winrm.certificate_url
     }
   }
 
 }
 
 resource "random_password" "admin" {
-  for_each         = local.os_type == "windows" ? var.settings.virtual_machine_settings : {}
+  for_each         = (local.os_type == "windows") && (try(var.settings.virtual_machine_settings["windows"].admin_password_key, null) == null) ? var.settings.virtual_machine_settings : {}
   length           = 123
   min_upper        = 2
   min_lower        = 2
@@ -146,15 +179,53 @@ resource "random_password" "admin" {
 }
 
 resource "azurerm_key_vault_secret" "admin_password" {
-  for_each = local.os_type == "windows" ? var.settings.virtual_machine_settings : {}
+  for_each = local.os_type == "windows" && try(var.settings.virtual_machine_settings[local.os_type].admin_password_key, null) == null ? var.settings.virtual_machine_settings : {}
 
   name         = format("%s-admin-password", azurecaf_name.windows_computer_name[each.key].result)
   value        = random_password.admin[local.os_type].result
-  key_vault_id = var.keyvault_id
+  key_vault_id = local.keyvault.id
 
   lifecycle {
     ignore_changes = [
       value
     ]
   }
+}
+
+#
+# Get the admin username and password from keyvault
+#
+
+locals {
+  admin_username = try(data.external.windows_admin_username.0.result.value, null)
+  admin_password = try(data.external.windows_admin_password.0.result.value, null)
+}
+
+#
+# Use data external to retrieve value from different subscription
+#
+# With for_each it is not possible to change the provider's subscription at runtime so using the following pattern.
+#
+data "external" "windows_admin_username" {
+  count = try(var.settings.virtual_machine_settings["windows"].admin_username_key, null) == null ? 0 : 1
+  program = [
+    "bash", "-c",
+    format(
+      "az keyvault secret show --name '%s' --vault-name '%s' --query '{value: value }' -o json",
+      var.settings.virtual_machine_settings["windows"].admin_username_key,
+      local.keyvault.name
+    )
+  ]
+}
+
+data "external" "windows_admin_password" {
+  count = try(var.settings.virtual_machine_settings["windows"].admin_password_key, null) == null ? 0 : 1
+  program = [
+    "bash", "-c",
+    format(
+      "az keyvault secret show -n '%s' --vault-name '%s' --query '{value: value }' -o json",
+      var.settings.virtual_machine_settings["windows"].admin_password_key,
+      local.keyvault.name
+    )
+  ]
 }

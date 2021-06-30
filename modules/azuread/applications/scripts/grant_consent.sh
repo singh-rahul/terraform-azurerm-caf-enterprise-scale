@@ -1,11 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 
 set -e
 
 
 user_type=$(az account show --query user.type -o tsv)
 
-if [ ${user_type} == "user" ]; then
+if [ "${user_type}" = "user" ]; then
 
     az ad app permission admin-consent --id ${applicationId}
 
@@ -14,7 +14,9 @@ else
     resourceId=$(az ad sp show --id "${resourceAppId}" --query "objectId" -o tsv)
     echo " -resourceId: ${resourceId}"
 
-    URI=$(echo  "https://graph.microsoft.com/beta/servicePrincipals/${resourceId}/appRoleAssignments") && echo " - uri: $URI"
+    microsoft_graph_endpoint=$(az cloud show | jq -r ".endpoints.microsoftGraphResourceId")
+
+    URI=$(echo  "${microsoft_graph_endpoint}beta/servicePrincipals/${resourceId}/appRoleAssignments") && echo " - uri: $URI"
 
     # grant consent (Application.ReadWrite.OwnedBy)
     JSON=$( jq -n \

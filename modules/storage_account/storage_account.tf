@@ -7,10 +7,11 @@ locals {
 resource "azurecaf_name" "stg" {
   name          = var.storage_account.name
   resource_type = "azurerm_storage_account"
-  prefixes      = [var.global_settings.prefix]
+  prefixes      = var.global_settings.prefixes
   random_length = var.global_settings.random_length
   clean_input   = true
   passthrough   = var.global_settings.passthrough
+  use_slug      = var.global_settings.use_slug
 }
 
 resource "azurerm_storage_account" "stg" {
@@ -25,7 +26,7 @@ resource "azurerm_storage_account" "stg" {
   min_tls_version           = lookup(var.storage_account, "min_tls_version", "TLS1_2")
   allow_blob_public_access  = lookup(var.storage_account, "allow_blob_public_access", false)
   is_hns_enabled            = lookup(var.storage_account, "is_hns_enabled", false)
-  tags                      = local.tags
+  tags                      = merge(var.base_tags, local.tags)
 
 
   dynamic "custom_domain" {
@@ -65,7 +66,7 @@ resource "azurerm_storage_account" "stg" {
         for_each = lookup(var.storage_account.blob_properties, "delete_retention_policy", false) == false ? [] : [1]
 
         content {
-          days = lookup(var.storage_account.blob_properties.delete_retention_policy, "days", 7)
+          days = lookup(var.storage_account.blob_properties.delete_retention_policy, "delete_retention_policy", 7)
         }
       }
     }
@@ -134,21 +135,21 @@ resource "azurerm_storage_account" "stg" {
   }
 
   dynamic "network_rules" {
-    for_each = lookup(var.storage_account, "network", {})
-
+    for_each = lookup(var.storage_account, "network", null) == null ? [] : [1]
     content {
-      bypass         = network_rules.value.bypass
-      default_action = try(network_rules.value.default_action, "Deny")
-      ip_rules       = try(network_rules.value.ip_rules, null)
-      virtual_network_subnet_ids = [
-        for subnet_key in network_rules.value.subnet_keys : var.vnets[network_rules.key].subnets[subnet_key].id
+      bypass         = try(var.storage_account.network.bypass, [])
+      default_action = try(var.storage_account.network.default_action, "Deny")
+      ip_rules       = try(var.storage_account.network.ip_rules, [])
+      virtual_network_subnet_ids = try(var.storage_account.network.subnets, null) == null ? null : [
+        for key, value in var.storage_account.network.subnets : try(var.vnets[var.client_config.landingzone_key][value.vnet_key].subnets[value.subnet_key].id, var.vnets[value.lz_key][value.vnet_key].subnets[value.subnet_key].id)
       ]
     }
   }
-
 }
 
-module container {
+
+
+module "container" {
   source   = "./container"
   for_each = try(var.storage_account.containers, {})
 
@@ -156,7 +157,7 @@ module container {
   settings             = each.value
 }
 
-module data_lake_filesystem {
+module "data_lake_filesystem" {
   source   = "./data_lake_filesystem"
   for_each = try(var.storage_account.data_lake_filesystems, {})
 

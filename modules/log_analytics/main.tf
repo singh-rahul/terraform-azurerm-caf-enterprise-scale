@@ -6,3 +6,12 @@ terraform {
   }
   required_version = ">= 0.13"
 }
+
+
+locals {
+  module_tag = {
+    "module" = basename(abspath(path.module))
+  }
+  tags = merge(var.base_tags, local.module_tag, try(var.log_analytics.tags, null))
+}
+

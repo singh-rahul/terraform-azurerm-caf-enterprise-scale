@@ -5,47 +5,25 @@ module "app_service_environments" {
   for_each = local.webapp.app_service_environments
 
   settings                  = each.value
-  resource_group_name       = module.resource_groups[each.value.resource_group_key].name
-  location                  = lookup(each.value, "region", null) == null ? module.resource_groups[each.value.resource_group_key].location : var.global_settings.regions[each.value.region]
+  resource_group_name       = local.resource_groups[each.value.resource_group_key].name
+  location                  = lookup(each.value, "region", null) == null ? local.resource_groups[each.value.resource_group_key].location : local.global_settings.regions[each.value.region]
   tags                      = try(each.value.tags, null)
+  base_tags                 = try(local.global_settings.inherit_tags, false) ? local.resource_groups[each.value.resource_group_key].tags : {}
   name                      = each.value.name
   kind                      = try(each.value.kind, "ASEV2")
   zone                      = try(each.value.zone, null)
-  subnet_id                 = lookup(each.value, "remote_networking", null) == null ? module.networking[each.value.vnet_key].subnets[each.value.subnet_key].id : data.terraform_remote_state.ase_vnets[each.key].outputs[each.value.remote_networking.output_key][each.value.remote_networking.lz_key][each.value.vnet_key].subnets[each.value.subnet_key].id
-  subnet_name               = lookup(each.value, "remote_networking", null) == null ? module.networking[each.value.vnet_key].subnets[each.value.subnet_key].name : data.terraform_remote_state.ase_vnets[each.key].outputs[each.value.remote_networking.output_key][each.value.remote_networking.lz_key][each.value.vnet_key].subnets[each.value.subnet_key].name
+  subnet_id                 = lookup(each.value, "lz_key", null) == null ? local.combined_objects_networking[local.client_config.landingzone_key][each.value.vnet_key].subnets[each.value.subnet_key].id : local.combined_objects_networking[each.value.lz_key][each.value.vnet_key].subnets[each.value.subnet_key].id
+  subnet_name               = lookup(each.value, "lz_key", null) == null ? local.combined_objects_networking[local.client_config.landingzone_key][each.value.vnet_key].subnets[each.value.subnet_key].name : local.combined_objects_networking[each.value.lz_key][each.value.vnet_key].subnets[each.value.subnet_key].name
   internalLoadBalancingMode = each.value.internalLoadBalancingMode
   front_end_size            = try(each.value.front_end_size, "Standard_D1_V2")
   diagnostic_profiles       = try(each.value.diagnostic_profiles, null)
-  diagnostics               = local.diagnostics
+  diagnostics               = local.combined_diagnostics
   global_settings           = local.global_settings
-  tfstates                  = var.tfstates
-  use_msi                   = var.use_msi
-  private_dns               = lookup(each.value, "private_dns_records", null) == null ? {} : module.private_dns
-}
-
-#
-# Get remote vnet to deploy the ase
-#
-data "terraform_remote_state" "ase_vnets" {
-  for_each = {
-    for key, value in local.webapp.app_service_environments : key => value
-    if try(value.remote_networking, null) != null
-  }
-
-  backend = "azurerm"
-  config = {
-    storage_account_name = var.tfstates[each.value.remote_networking.tfstate_key].storage_account_name
-    container_name       = var.tfstates[each.value.remote_networking.tfstate_key].container_name
-    resource_group_name  = var.tfstates[each.value.remote_networking.tfstate_key].resource_group_name
-    key                  = var.tfstates[each.value.remote_networking.tfstate_key].key
-    use_msi              = var.use_msi
-    subscription_id      = var.use_msi ? var.tfstates[each.value.remote_networking.tfstate_key].subscription_id : null
-    tenant_id            = var.use_msi ? var.tfstates[each.value.remote_networking.tfstate_key].tenant_id : null
-  }
+  private_dns               = lookup(each.value, "private_dns_records", null) == null ? {} : local.combined_objects_private_dns
 }
 
 
 output "app_service_environments" {
-  value     = module.app_service_environments
-  sensitive = true
+  value = module.app_service_environments
+
 }
